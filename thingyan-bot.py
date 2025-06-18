@@ -180,18 +180,17 @@ async def search_songs(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     prefix = None
     query = lowered_input
 
-    if lowered_input.startswith("သီချင်း"):
+    if lowered_input.startswith("သီချင်း "):
         prefix = "title"
         query = lowered_input.replace("သီချင်း", "", 1).strip()
-    elif lowered_input.startswith("အဆိုတော်"):
+    elif lowered_input.startswith("အဆိုတော် "):
         prefix = "artist"
         query = lowered_input.replace("အဆိုတော်", "", 1).strip()
-    elif lowered_input.startswith("album"):
+    elif lowered_input.startswith("album "):
         prefix = "album"
         query = lowered_input.replace("album", "", 1).strip()
     else:
-        # No prefix, search all fields
-        prefix = "all"
+        prefix = "all"  # NO prefix - search all fields
 
     if not query:
         await update.message.reply_text(
@@ -225,7 +224,6 @@ async def search_songs(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
 
         response = "ရှာတွေ့သော သီချင်းများ:\n\n"
         for song in unique_songs:
-            # Properly escape for MarkdownV2
             t = escape_markdown(song["title"], version=2)
             a = escape_markdown(song["artist"], version=2)
             al = escape_markdown(song["album"], version=2)
@@ -246,7 +244,6 @@ async def search_songs(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
             "ရှာဖွေမှု ပုံစံ မှန်ကန်ကြောင်း သေချာစစ်ဆေးပေးပါ။",
             parse_mode=ParseMode.MARKDOWN_V2,
         )
-
 
 # --- Main ---
 
