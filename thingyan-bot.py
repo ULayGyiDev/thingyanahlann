@@ -1,10 +1,13 @@
-import os
 import json
 import logging
 import requests
-from fastapi import FastAPI, Request, HTTPException
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
-from telegram.constants import ParseMode
+import os
+from telegram import (
+    Update,
+    InlineKeyboardButton,
+    InlineKeyboardMarkup,
+    ReplyKeyboardRemove,
+)
 from telegram.ext import (
     Application,
     CommandHandler,
@@ -13,6 +16,8 @@ from telegram.ext import (
     filters,
     ContextTypes,
 )
+from telegram.helpers import escape_markdown
+from telegram.constants import ParseMode
 
 # --- Logging ---
 logging.basicConfig(
@@ -27,12 +32,15 @@ if not TOKEN:
     raise RuntimeError("TELEGRAM_BOT_TOKEN environment variable not set")
 
 THINGYAN_SONGS_JSON_URL = "https://raw.githubusercontent.com/ULayGyiDev/thingyanahlann/main/songs.json"
+
 REQUIRED_CHANNEL_ID = -1002664997277
 REQUIRED_CHANNEL_INVITE_LINK = "https://t.me/thingyanahlann"
 REQUIRED_CHANNEL_USERNAME = "@thingyanahlann"
 
+# Global song data list
 song_data = []
 
+# --- Load JSON Data ---
 def load_song_data_from_json_file() -> list:
     global song_data
     try:
@@ -61,13 +69,9 @@ def load_song_data_from_json_file() -> list:
         song_data = []
     return song_data
 
+
+# Load once at startup
 load_song_data_from_json_file()
-
-# --- FastAPI app ---
-app = FastAPI()
-
-# --- Telegram Application ---
-application = Application.builder().token(TOKEN).build()
 
 # --- Channel membership check ---
 async def check_channel_membership(update: Update, context: ContextTypes.DEFAULT_TYPE) -> bool:
@@ -92,7 +96,8 @@ async def check_channel_membership(update: Update, context: ContextTypes.DEFAULT
         )
         return False
 
-# --- Handlers ---
+
+# --- Command Handlers ---
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if not await check_channel_membership(update, context):
@@ -115,30 +120,35 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         reply_markup=reply_markup,
     )
 
+
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if not await check_channel_membership(update, context):
         return
 
     await update.message.reply_text(
         "ဒီ bot ကို အသုံးပြုနည်းကတော့:\n"
-        "`/start` \\- bot ကိုစတင်ရန်\n"
-        "`သီချင်း [သီချင်းအမည်]` \\- သီချင်းအမည်နဲ့ရှာရန်\n"
-        "`အဆိုတော် [အဆိုတော်အမည်]` \\- အဆိုတော်နဲ့ရှာရန်\n"
-        "`album [album အမည်]` \\- album အမည်နဲ့ရှာရန်\n"
+        "`/start` - bot ကိုစတင်ရန်\n"
+        "`သီချင်း [သီချင်းအမည်]` - သီချင်းအမည်နဲ့ရှာရန်\n"
+        "`အဆိုတော် [အဆိုတော်အမည်]` - အဆိုတော်နဲ့ရှာရန်\n"
+        "`album [album အမည်]` - album အမည်နဲ့ရှာရန်\n"
         "prefix မပါပဲ သီချင်း၊ အဆိုတော် သို့မဟုတ် album ကို တိုက်ရိုက် ရိုက်ထည့်၍လည်း ရှာဖွေနိုင်ပါသည်။\n"
         "မှန်ကန်သော ပုံစံအတိုင်း ရိုက်ထည့်ပေးပါ။",
         parse_mode=ParseMode.MARKDOWN_V2
     )
 
+
+# --- Callback Query Handler for Inline Keyboard ---
+
 async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     query = update.callback_query
-    await query.answer()
+    await query.answer()  # Acknowledge callback to Telegram
+
     data = query.data
 
     if data.startswith("prefix_"):
         prefix = data.split("_", 1)[1]
         await query.message.reply_text(
-            f"`{prefix}` စာလုံးနဲ့ စတင်ပြီး ရိုက်ထည့်ပေးပါ။\nဥပမာ: `{prefix} မိုး`",
+            f"'{prefix}' စာလုံးနဲ့ စတင်ပြီး ရိုက်ထည့်ပေးပါ။\nဥပမာ: `{prefix} မိုး`",
             parse_mode=ParseMode.MARKDOWN_V2,
         )
     elif data == "refresh_songs":
@@ -163,6 +173,9 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     else:
         await query.message.reply_text("Unknown action.")
 
+
+# --- Search Handler ---
+
 async def search_songs(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if not await check_channel_membership(update, context):
         return
@@ -171,12 +184,15 @@ async def search_songs(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     if not song_data:
         song_data = load_song_data_from_json_file()
         if not song_data:
-            await update.message.reply_text("သီချင်းအချက်အလက်များ ရယူမှု ပြဿနာ။")
+            await update.message.reply_text(
+                "သီချင်းအချက်အလက်များကို ရယူရာတွင် ပြဿနာရှိနေပါသည်။ ကျေးဇူးပြု၍ ခဏကြာပြီးမှ ထပ်ကြိုးစားပေးပါ။"
+            )
             return
 
     user_input = update.message.text.strip()
     lowered_input = user_input.lower()
 
+    # Determine prefix and query string
     prefix = None
     query = lowered_input
 
@@ -190,10 +206,12 @@ async def search_songs(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         prefix = "album"
         query = lowered_input.replace("album", "", 1).strip()
     else:
-        prefix = "all"
+        prefix = "all"  # NO prefix - search all fields
 
     if not query:
-        await update.message.reply_text("ရှာဖွေရန် စာလုံးတစ်ခုခု ရိုက်ထည့်ပေးပါ။")
+        await update.message.reply_text(
+            "ရှာဖွေရန် စာလုံးတစ်ခုခု ရိုက်ထည့်ပေးပါ။"
+        )
         return
 
     found_songs = []
@@ -220,27 +238,24 @@ async def search_songs(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
                 unique_songs.append(s)
                 seen_links.add(s["link"])
 
+        # Save results in user_data for callbacks
         context.user_data["last_search_results"] = unique_songs
 
+        # Send each song separately with a Play button
         for idx, song in enumerate(unique_songs):
-            # Escape markdown v2 special chars
-            def mdv2_escape(text):
-                escape_chars = r"_*[]()~`>#+-=|{}.!\\" 
-                for ch in escape_chars:
-                    text = text.replace(ch, f"\\{ch}")
-                return text
-
-            t = mdv2_escape(song["title"])
-            a = mdv2_escape(song["artist"])
-            al = mdv2_escape(song["album"])
+            t = escape_markdown(song["title"], version=2)
+            a = escape_markdown(song["artist"], version=2)
+            al = escape_markdown(song["album"], version=2)
 
             song_text = (
-                f"*Title*: {t}\n"
-                f"*Artist*: {a}\n"
-                f"*Album*: {al}\n"
+                f"**Title**: {t}\n"
+                f"**Artist**: {a}\n"
+                f"**Album**: {al}\n"
             )
 
-            keyboard = [[InlineKeyboardButton("▶️ Play Song", callback_data=f"play_{idx}")]]
+            keyboard = [
+                [InlineKeyboardButton("▶️ Play Song", callback_data=f"play_{idx}")]
+            ]
             reply_markup = InlineKeyboardMarkup(keyboard)
 
             await update.message.reply_text(
@@ -250,41 +265,28 @@ async def search_songs(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
             )
     else:
         await update.message.reply_text(
-            f"`{user_input}` နဲ့ သီချင်း မတွေ့ပါ။",
+            f"'{escape_markdown(user_input, version=2)}' နဲ့ ပတ်သက်တဲ့ သီချင်း မတွေ့ပါ။\n"
+            "ရှာဖွေမှု ပုံစံ မှန်ကန်ကြောင်း သေချာစစ်ဆေးပေးပါ။",
             parse_mode=ParseMode.MARKDOWN_V2,
         )
 
-# Register handlers
-application.add_handler(CommandHandler("start", start))
-application.add_handler(CommandHandler("help", help_command))
-application.add_handler(CallbackQueryHandler(button_callback))
-application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, search_songs))
 
-# --- FastAPI webhook endpoint ---
-@app.post(f"/{TOKEN}")
-async def telegram_webhook(request: Request):
-    try:
-        data = await request.json()
-        update = Update.de_json(data, application.bot)
-    except Exception as e:
-        logger.error(f"Failed to parse update: {e}")
-        raise HTTPException(status_code=400, detail="Invalid update")
+# --- Main ---
 
-    await application.update_queue.put(update)
-    return {"ok": True}
+def main() -> None:
+    application = Application.builder().token(TOKEN).build()
 
-@app.get("/")
-async def root():
-    return {"status": "Bot is running"}
+    application.add_handler(CommandHandler("start", start))
+    application.add_handler(CommandHandler("help", help_command))
+    application.add_handler(CallbackQueryHandler(button_callback))
+    application.add_handler(
+        MessageHandler(filters.TEXT & ~filters.COMMAND, search_songs)
+    )
 
-# --- Startup & Shutdown events to start and stop the bot properly ---
-@app.on_event("startup")
-async def on_startup():
-    logger.info("Starting Telegram bot application...")
-    await application.start()
-    # Optionally: await application.updater.start_polling() # not needed for webhook
+    logger.info("Bot started, polling...")
+    application.run_polling(allowed_updates=Update.ALL_TYPES)
+    logger.info("Bot stopped.")
 
-@app.on_event("shutdown")
-async def on_shutdown():
-    logger.info("Stopping Telegram bot application...")
-    await application.stop()
+
+if __name__ == "__main__":
+    main()
