@@ -1,0 +1,1 @@
+python thingyan-bot.py
