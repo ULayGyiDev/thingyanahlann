@@ -132,7 +132,8 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         "`အဆိုတော် [အဆိုတော်အမည်]` - အဆိုတော်နဲ့ရှာရန်\n"
         "`album [album အမည်]` - album အမည်နဲ့ရှာရန်\n"
         "prefix မပါပဲ သီချင်း၊ အဆိုတော် သို့မဟုတ် album ကို တိုက်ရိုက် ရိုက်ထည့်၍လည်း ရှာဖွေနိုင်ပါသည်။\n"
-        "မှန်ကန်သော ပုံစံအတိုင်း ရိုက်ထည့်ပေးပါ။"
+        "မှန်ကန်သော ပုံစံအတိုင်း ရိုက်ထည့်ပေးပါ။",
+        parse_mode=ParseMode.MARKDOWN_V2
     )
 
 
@@ -156,6 +157,21 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         await query.message.reply_text(
             f"Songs data refreshed. ယခု {len(new_data)} သီချင်း ရရှိထားပါတယ်။"
         )
+    elif data.startswith("play_"):
+        idx = int(data.split("_", 1)[1])
+        songs = context.user_data.get("last_search_results", [])
+        if 0 <= idx < len(songs):
+            song = songs[idx]
+            audio_url = song["link"]
+            try:
+                await query.message.reply_audio(audio_url, title=song["title"])
+            except Exception as e:
+                logger.error(f"Error sending audio: {e}")
+                await query.message.reply_text(f"Cannot play song: {e}")
+        else:
+            await query.message.reply_text("Invalid song selection.")
+    else:
+        await query.message.reply_text("Unknown action.")
 
 
 # --- Search Handler ---
@@ -222,28 +238,38 @@ async def search_songs(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
                 unique_songs.append(s)
                 seen_links.add(s["link"])
 
-        response = "ရှာတွေ့သော သီချင်းများ:\n\n"
-        for song in unique_songs:
+        # Save results in user_data for callbacks
+        context.user_data["last_search_results"] = unique_songs
+
+        # Send each song separately with a Play button
+        for idx, song in enumerate(unique_songs):
             t = escape_markdown(song["title"], version=2)
             a = escape_markdown(song["artist"], version=2)
             al = escape_markdown(song["album"], version=2)
-            l = escape_markdown(song["link"], version=2)
 
-            response += (
+            song_text = (
                 f"**Title**: {t}\n"
                 f"**Artist**: {a}\n"
                 f"**Album**: {al}\n"
-                f"**Link**: {l}\n\n"
             )
-        await update.message.reply_text(
-            response, parse_mode=ParseMode.MARKDOWN_V2, reply_markup=ReplyKeyboardRemove()
-        )
+
+            keyboard = [
+                [InlineKeyboardButton("▶️ Play Song", callback_data=f"play_{idx}")]
+            ]
+            reply_markup = InlineKeyboardMarkup(keyboard)
+
+            await update.message.reply_text(
+                song_text,
+                parse_mode=ParseMode.MARKDOWN_V2,
+                reply_markup=reply_markup,
+            )
     else:
         await update.message.reply_text(
             f"'{escape_markdown(user_input, version=2)}' နဲ့ ပတ်သက်တဲ့ သီချင်း မတွေ့ပါ။\n"
             "ရှာဖွေမှု ပုံစံ မှန်ကန်ကြောင်း သေချာစစ်ဆေးပေးပါ။",
             parse_mode=ParseMode.MARKDOWN_V2,
         )
+
 
 # --- Main ---
 
