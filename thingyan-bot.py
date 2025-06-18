@@ -225,7 +225,7 @@ async def search_songs(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         for idx, song in enumerate(unique_songs):
             # Escape markdown v2 special chars
             def mdv2_escape(text):
-                escape_chars = r"_*[]()~`>#+-=|{}.!\\"
+                escape_chars = r"_*[]()~`>#+-=|{}.!\\" 
                 for ch in escape_chars:
                     text = text.replace(ch, f"\\{ch}")
                 return text
@@ -276,3 +276,15 @@ async def telegram_webhook(request: Request):
 @app.get("/")
 async def root():
     return {"status": "Bot is running"}
+
+# --- Startup & Shutdown events to start and stop the bot properly ---
+@app.on_event("startup")
+async def on_startup():
+    logger.info("Starting Telegram bot application...")
+    await application.start()
+    # Optionally: await application.updater.start_polling() # not needed for webhook
+
+@app.on_event("shutdown")
+async def on_shutdown():
+    logger.info("Stopping Telegram bot application...")
+    await application.stop()
