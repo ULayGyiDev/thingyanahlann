@@ -7,8 +7,8 @@ from telegram import (
     Update,
     InlineKeyboardButton,
     InlineKeyboardMarkup,
-    ParseMode,
 )
+from telegram.constants import ParseMode
 from telegram.ext import (
     Application,
     CommandHandler,
@@ -31,7 +31,6 @@ if not TOKEN:
     raise RuntimeError("TELEGRAM_BOT_TOKEN environment variable not set")
 
 THINGYAN_SONGS_JSON_URL = "https://raw.githubusercontent.com/ULayGyiDev/thingyanahlann/main/songs.json"
-
 REQUIRED_CHANNEL_ID = -1002664997277
 REQUIRED_CHANNEL_INVITE_LINK = "https://t.me/thingyanahlann"
 REQUIRED_CHANNEL_USERNAME = "@thingyanahlann"
@@ -126,10 +125,10 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
 
     await update.message.reply_text(
         "ဒီ bot ကို အသုံးပြုနည်းကတော့:\n"
-        "`/start` - bot ကိုစတင်ရန်\n"
-        "`သီချင်း [သီချင်းအမည်]` - သီချင်းအမည်နဲ့ရှာရန်\n"
-        "`အဆိုတော် [အဆိုတော်အမည်]` - အဆိုတော်နဲ့ရှာရန်\n"
-        "`album [album အမည်]` - album အမည်နဲ့ရှာရန်\n"
+        "`/start` \\- bot ကိုစတင်ရန်\n"
+        "`သီချင်း [သီချင်းအမည်]` \\- သီချင်းအမည်နဲ့ရှာရန်\n"
+        "`အဆိုတော် [အဆိုတော်အမည်]` \\- အဆိုတော်နဲ့ရှာရန်\n"
+        "`album [album အမည်]` \\- album အမည်နဲ့ရှာရန်\n"
         "prefix မပါပဲ သီချင်း၊ အဆိုတော် သို့မဟုတ် album ကို တိုက်ရိုက် ရိုက်ထည့်၍လည်း ရှာဖွေနိုင်ပါသည်။\n"
         "မှန်ကန်သော ပုံစံအတိုင်း ရိုက်ထည့်ပေးပါ။",
         parse_mode=ParseMode.MARKDOWN_V2
@@ -137,14 +136,13 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
 
 async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     query = update.callback_query
-    await query.answer()  # Acknowledge callback
-
+    await query.answer()
     data = query.data
 
     if data.startswith("prefix_"):
         prefix = data.split("_", 1)[1]
         await query.message.reply_text(
-            f"'{prefix}' စာလုံးနဲ့ စတင်ပြီး ရိုက်ထည့်ပေးပါ။\nဥပမာ: `{prefix} မိုး`",
+            f"`{prefix}` စာလုံးနဲ့ စတင်ပြီး ရိုက်ထည့်ပေးပါ။\nဥပမာ: `{prefix} မိုး`",
             parse_mode=ParseMode.MARKDOWN_V2,
         )
     elif data == "refresh_songs":
@@ -177,9 +175,7 @@ async def search_songs(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     if not song_data:
         song_data = load_song_data_from_json_file()
         if not song_data:
-            await update.message.reply_text(
-                "သီချင်းအချက်အလက်များကို ရယူရာတွင် ပြဿနာရှိနေပါသည်။ ကျေးဇူးပြု၍ ခဏကြာပြီးမှ ထပ်ကြိုးစားပေးပါ။"
-            )
+            await update.message.reply_text("သီချင်းအချက်အလက်များ ရယူမှု ပြဿနာ။")
             return
 
     user_input = update.message.text.strip()
@@ -201,9 +197,7 @@ async def search_songs(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         prefix = "all"
 
     if not query:
-        await update.message.reply_text(
-            "ရှာဖွေရန် စာလုံးတစ်ခုခု ရိုက်ထည့်ပေးပါ။"
-        )
+        await update.message.reply_text("ရှာဖွေရန် စာလုံးတစ်ခုခု ရိုက်ထည့်ပေးပါ။")
         return
 
     found_songs = []
@@ -232,14 +226,14 @@ async def search_songs(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         context.user_data["last_search_results"] = unique_songs
 
         for idx, song in enumerate(unique_songs):
-            t = song["title"].replace("_", "\\_")  # simple markdown escaping
-            a = song["artist"].replace("_", "\\_")
-            al = song["album"].replace("_", "\\_")
+            t = song["title"].replace("_", "\\_").replace("*", "\\*")
+            a = song["artist"].replace("_", "\\_").replace("*", "\\*")
+            al = song["album"].replace("_", "\\_").replace("*", "\\*")
 
             song_text = (
-                f"**Title**: {t}\n"
-                f"**Artist**: {a}\n"
-                f"**Album**: {al}\n"
+                f"*Title*: {t}\n"
+                f"*Artist*: {a}\n"
+                f"*Album*: {al}\n"
             )
 
             keyboard = [[InlineKeyboardButton("▶️ Play Song", callback_data=f"play_{idx}")]]
@@ -252,19 +246,17 @@ async def search_songs(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
             )
     else:
         await update.message.reply_text(
-            f"'{user_input}' နဲ့ ပတ်သက်တဲ့ သီချင်း မတွေ့ပါ။\n"
-            "ရှာဖွေမှု ပုံစံ မှန်ကန်ကြောင်း သေချာစစ်ဆေးပေးပါ။",
+            f"`{user_input}` နဲ့ သီချင်း မတွေ့ပါ။",
             parse_mode=ParseMode.MARKDOWN_V2,
         )
 
-# Register handlers to application
+# Register handlers
 application.add_handler(CommandHandler("start", start))
 application.add_handler(CommandHandler("help", help_command))
 application.add_handler(CallbackQueryHandler(button_callback))
 application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, search_songs))
 
-# --- FastAPI webhook endpoint ---
-
+# --- FastAPI webhook ---
 @app.post(f"/{TOKEN}")
 async def telegram_webhook(request: Request):
     try:
@@ -273,12 +265,9 @@ async def telegram_webhook(request: Request):
     except Exception as e:
         logger.error(f"Failed to parse update: {e}")
         raise HTTPException(status_code=400, detail="Invalid update")
-
     await application.update_queue.put(update)
     return {"ok": True}
 
 @app.get("/")
 async def root():
     return {"status": "Bot is running"}
-
-# For local development: uvicorn thingyan-bot:app --host 0.0.0.0 --port 8080
