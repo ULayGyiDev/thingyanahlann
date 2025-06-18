@@ -3,5 +3,5 @@
     "builder": "NIXPACKS",
     "buildCommand": "pip install -r requirements.txt"
   },
-  "start": "python thingyan-bot.py"
+  "start": "uvicorn thingyan-bot:app --host 0.0.0.0 --port 8080"
 }
