@@ -1,1 +1,1 @@
-start: python thingyan-bot.py
+worker: python thingyan-bot.py
