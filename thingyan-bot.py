@@ -3,11 +3,7 @@ import json
 import logging
 import requests
 from fastapi import FastAPI, Request, HTTPException
-from telegram import (
-    Update,
-    InlineKeyboardButton,
-    InlineKeyboardMarkup,
-)
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.constants import ParseMode
 from telegram.ext import (
     Application,
@@ -216,6 +212,7 @@ async def search_songs(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
             found_songs.append(song)
 
     if found_songs:
+        # Remove duplicates by link
         unique_songs = []
         seen_links = set()
         for s in found_songs:
@@ -226,9 +223,16 @@ async def search_songs(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         context.user_data["last_search_results"] = unique_songs
 
         for idx, song in enumerate(unique_songs):
-            t = song["title"].replace("_", "\\_").replace("*", "\\*")
-            a = song["artist"].replace("_", "\\_").replace("*", "\\*")
-            al = song["album"].replace("_", "\\_").replace("*", "\\*")
+            # Escape markdown v2 special chars
+            def mdv2_escape(text):
+                escape_chars = r"_*[]()~`>#+-=|{}.!\\"
+                for ch in escape_chars:
+                    text = text.replace(ch, f"\\{ch}")
+                return text
+
+            t = mdv2_escape(song["title"])
+            a = mdv2_escape(song["artist"])
+            al = mdv2_escape(song["album"])
 
             song_text = (
                 f"*Title*: {t}\n"
@@ -256,7 +260,7 @@ application.add_handler(CommandHandler("help", help_command))
 application.add_handler(CallbackQueryHandler(button_callback))
 application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, search_songs))
 
-# --- FastAPI webhook ---
+# --- FastAPI webhook endpoint ---
 @app.post(f"/{TOKEN}")
 async def telegram_webhook(request: Request):
     try:
@@ -265,6 +269,7 @@ async def telegram_webhook(request: Request):
     except Exception as e:
         logger.error(f"Failed to parse update: {e}")
         raise HTTPException(status_code=400, detail="Invalid update")
+
     await application.update_queue.put(update)
     return {"ok": True}
 
