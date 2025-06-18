@@ -1,12 +1,13 @@
+import os
 import json
 import logging
 import requests
-import os
+from fastapi import FastAPI, Request, HTTPException
 from telegram import (
     Update,
     InlineKeyboardButton,
     InlineKeyboardMarkup,
-    ReplyKeyboardRemove,
+    ParseMode,
 )
 from telegram.ext import (
     Application,
@@ -16,8 +17,6 @@ from telegram.ext import (
     filters,
     ContextTypes,
 )
-from telegram.helpers import escape_markdown
-from telegram.constants import ParseMode
 
 # --- Logging ---
 logging.basicConfig(
@@ -37,10 +36,8 @@ REQUIRED_CHANNEL_ID = -1002664997277
 REQUIRED_CHANNEL_INVITE_LINK = "https://t.me/thingyanahlann"
 REQUIRED_CHANNEL_USERNAME = "@thingyanahlann"
 
-# Global song data list
 song_data = []
 
-# --- Load JSON Data ---
 def load_song_data_from_json_file() -> list:
     global song_data
     try:
@@ -69,9 +66,13 @@ def load_song_data_from_json_file() -> list:
         song_data = []
     return song_data
 
-
-# Load once at startup
 load_song_data_from_json_file()
+
+# --- FastAPI app ---
+app = FastAPI()
+
+# --- Telegram Application ---
+application = Application.builder().token(TOKEN).build()
 
 # --- Channel membership check ---
 async def check_channel_membership(update: Update, context: ContextTypes.DEFAULT_TYPE) -> bool:
@@ -96,8 +97,7 @@ async def check_channel_membership(update: Update, context: ContextTypes.DEFAULT
         )
         return False
 
-
-# --- Command Handlers ---
+# --- Handlers ---
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if not await check_channel_membership(update, context):
@@ -120,7 +120,6 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         reply_markup=reply_markup,
     )
 
-
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if not await check_channel_membership(update, context):
         return
@@ -136,12 +135,9 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         parse_mode=ParseMode.MARKDOWN_V2
     )
 
-
-# --- Callback Query Handler for Inline Keyboard ---
-
 async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     query = update.callback_query
-    await query.answer()  # Acknowledge callback to Telegram
+    await query.answer()  # Acknowledge callback
 
     data = query.data
 
@@ -173,9 +169,6 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     else:
         await query.message.reply_text("Unknown action.")
 
-
-# --- Search Handler ---
-
 async def search_songs(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if not await check_channel_membership(update, context):
         return
@@ -192,7 +185,6 @@ async def search_songs(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     user_input = update.message.text.strip()
     lowered_input = user_input.lower()
 
-    # Determine prefix and query string
     prefix = None
     query = lowered_input
 
@@ -206,7 +198,7 @@ async def search_songs(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         prefix = "album"
         query = lowered_input.replace("album", "", 1).strip()
     else:
-        prefix = "all"  # NO prefix - search all fields
+        prefix = "all"
 
     if not query:
         await update.message.reply_text(
@@ -230,7 +222,6 @@ async def search_songs(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
             found_songs.append(song)
 
     if found_songs:
-        # Remove duplicates by link
         unique_songs = []
         seen_links = set()
         for s in found_songs:
@@ -238,14 +229,12 @@ async def search_songs(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
                 unique_songs.append(s)
                 seen_links.add(s["link"])
 
-        # Save results in user_data for callbacks
         context.user_data["last_search_results"] = unique_songs
 
-        # Send each song separately with a Play button
         for idx, song in enumerate(unique_songs):
-            t = escape_markdown(song["title"], version=2)
-            a = escape_markdown(song["artist"], version=2)
-            al = escape_markdown(song["album"], version=2)
+            t = song["title"].replace("_", "\\_")  # simple markdown escaping
+            a = song["artist"].replace("_", "\\_")
+            al = song["album"].replace("_", "\\_")
 
             song_text = (
                 f"**Title**: {t}\n"
@@ -253,9 +242,7 @@ async def search_songs(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
                 f"**Album**: {al}\n"
             )
 
-            keyboard = [
-                [InlineKeyboardButton("▶️ Play Song", callback_data=f"play_{idx}")]
-            ]
+            keyboard = [[InlineKeyboardButton("▶️ Play Song", callback_data=f"play_{idx}")]]
             reply_markup = InlineKeyboardMarkup(keyboard)
 
             await update.message.reply_text(
@@ -265,28 +252,33 @@ async def search_songs(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
             )
     else:
         await update.message.reply_text(
-            f"'{escape_markdown(user_input, version=2)}' နဲ့ ပတ်သက်တဲ့ သီချင်း မတွေ့ပါ။\n"
+            f"'{user_input}' နဲ့ ပတ်သက်တဲ့ သီချင်း မတွေ့ပါ။\n"
             "ရှာဖွေမှု ပုံစံ မှန်ကန်ကြောင်း သေချာစစ်ဆေးပေးပါ။",
             parse_mode=ParseMode.MARKDOWN_V2,
         )
 
+# Register handlers to application
+application.add_handler(CommandHandler("start", start))
+application.add_handler(CommandHandler("help", help_command))
+application.add_handler(CallbackQueryHandler(button_callback))
+application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, search_songs))
 
-# --- Main ---
+# --- FastAPI webhook endpoint ---
 
-def main() -> None:
-    application = Application.builder().token(TOKEN).build()
+@app.post(f"/{TOKEN}")
+async def telegram_webhook(request: Request):
+    try:
+        data = await request.json()
+        update = Update.de_json(data, application.bot)
+    except Exception as e:
+        logger.error(f"Failed to parse update: {e}")
+        raise HTTPException(status_code=400, detail="Invalid update")
 
-    application.add_handler(CommandHandler("start", start))
-    application.add_handler(CommandHandler("help", help_command))
-    application.add_handler(CallbackQueryHandler(button_callback))
-    application.add_handler(
-        MessageHandler(filters.TEXT & ~filters.COMMAND, search_songs)
-    )
+    await application.update_queue.put(update)
+    return {"ok": True}
 
-    logger.info("Bot started, polling...")
-    application.run_polling(allowed_updates=Update.ALL_TYPES)
-    logger.info("Bot stopped.")
+@app.get("/")
+async def root():
+    return {"status": "Bot is running"}
 
-
-if __name__ == "__main__":
-    main()
+# For local development: uvicorn thingyan-bot:app --host 0.0.0.0 --port 8080
