@@ -1,1 +1,1 @@
-python thingyan-bot.py
+start: python thingyan-bot.py
